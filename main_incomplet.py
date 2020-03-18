@@ -69,11 +69,22 @@ y_train = x_train + sigma_noise*np.random.randn(x_train.shape[0],x_train.shape[1
 y_test = x_test + sigma_noise*np.random.randn(x_test.shape[0],x_test.shape[1],x_test.shape[2]) 
 
 # Afficher quelques images
-# TODO: afficher plusieurs images sur la même figure (utiliser subplot)
-plt.figure(1)
-plt.imshow(x_train[0],interpolation='nearest')
-plt.figure(2)
-plt.imshow(y_train[0],interpolation='nearest')
+numberImage = 3
+fig, axs = plt.subplots(2, numberImage)
+fig.suptitle("Afficher quelques images")
+
+for i in range(numberImage):
+  axs[0,i].imshow(x_train[i], interpolation = "nearest")
+  axs[1,i].imshow(y_train[i], interpolation = "nearest")
+
+axs.flat[0].set(ylabel = "Originales")
+axs.flat[numberImage].set(ylabel = "Avec du bruit")
+
+for ax in fig.get_axes():
+  ax.set_yticklabels([])
+  ax.set_xticklabels([])
+  ax.label_outer()
+
 plt.show()
 
 # Mettre donnees en forme pour passer dans le réseau
