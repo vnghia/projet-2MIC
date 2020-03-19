@@ -6,4 +6,4 @@
 
 - [ ] evaluer le réseau sur la partie test du jeu de données (pourquoi jamais sur le train?)
 
-- [ ] afficher les resultats sur la meme figure comme au debu
+- [x] afficher les resultats sur la meme figure comme au debu
