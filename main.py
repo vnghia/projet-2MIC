@@ -1,17 +1,21 @@
-from keras.datasets import mnist
-from keras.layers import Input, Activation
-from keras.layers.core import Dropout, Lambda
-from keras.layers.convolutional import Conv2D, Conv2DTranspose, UpSampling2D, Convolution2D
-from keras.layers.pooling import MaxPooling2D
-from keras.layers.merge import concatenate, Add
-from keras.models import Model
-from keras import optimizers, losses
+from datetime import datetime
+from tensorflow import keras
+from tensorflow.keras.datasets import mnist
+from tensorflow.keras.layers import Input, Activation
+from tensorflow.keras.layers import Conv2D, Conv2DTranspose, UpSampling2D, Convolution2D, BatchNormalization, Subtract
+from tensorflow.keras.layers import MaxPooling2D
+from tensorflow.keras.layers import concatenate, Add
+from tensorflow.keras.models import Model
+from tensorflow.keras import optimizers, losses
 
 import numpy as np
-import matplotlib.pyplot as plt
+rng = np.random.default_rng()
+indexs = []
+number_image = 10
+epochs = 10 # 10
+batch_size = 128 # 128
 
-import os
-os.environ["CUDA_VISIBLE_DEVICES"]="0"
+import matplotlib.pyplot as plt
 
 def GetData():
   (x_train, _), (x_test, _) = mnist.load_data()
@@ -46,12 +50,45 @@ def model_simple():
   NN = Model(init, x)
   return NN
 
-def TrainModel(model, loss, optim, epochs, batch_size, input_data, target_data, input_test_data, target_test_data):
+def model_lineaire():
+  init = Input(shape=(None, None,1))
+
+  x = Convolution2D(16, (3, 3), padding='same')(init)
+  x = Convolution2D(32, (3, 3), padding='same')(x)
+  x = Convolution2D(64, (3, 3), padding='same')(x)
+  x = Convolution2D(32, (3, 3), padding='same')(x)
+  x = Convolution2D(16, (3, 3), padding='same')(x)
+  x = Convolution2D(1, (3, 3), padding='same')(x)
+
+  NN = Model(init, x)
+  return NN
+
+def model_dncnn():
+  init = Input(shape=(None, None,1))
+
+  x = Convolution2D(filters=64, kernel_size=(3,3), strides=(1,1), padding='same')(init)
+  x = Activation('relu')(x)
+  for i in range(15):
+    x = Convolution2D(filters=64, kernel_size=(3,3), strides=(1,1), padding='same')(x)
+    x = BatchNormalization(axis=-1, epsilon=1e-3)(x)
+    x = Activation('relu')(x)
+
+  x = Conv2D(filters=1, kernel_size=(3,3), strides=(1,1), padding='same')(x)
+  x = Subtract()([init, x])
+
+  NN = Model(init, x)
+  return NN
+
+def TrainModel(model, loss, optim, epochs, batch_size, input_data, target_data, input_test_data, target_test_data, model_name = "model_simple"):
   model.summary()
 
   model.compile(loss=loss, optimizer=optim, metrics=['mse'])
 
-  out_train = model.fit(input_data, target_data, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=(input_test_data, target_test_data))
+  # Define the Keras TensorBoard callback.
+  logdir="logs/fit/" + model_name + "/epochs_" + str(epochs) + "_batch_" + str(batch_size) 
+  tensorboard_callback = keras.callbacks.TensorBoard(log_dir=logdir)
+
+  out_train = model.fit(input_data, target_data, batch_size=batch_size, epochs=epochs, verbose=1, validation_data=(input_test_data, target_test_data), callbacks=[tensorboard_callback])
 
   score = model.evaluate(input_test_data, target_test_data, verbose=0)
   print('Test loss:', score[0])
@@ -65,18 +102,19 @@ def TrainModel(model, loss, optim, epochs, batch_size, input_data, target_data, 
   plt.plot(loss_test,label='validation')
   plt.title('Loss')
   plt.legend()
+  plt.savefig('train_loss.png')
   plt.show()
 
   return model
 
-def DisplayResult(number_image, target_data, input_data, result_data):
+
+def DisplayResult(number_image, target_data, input_data, result_data, filename = "result.png"):
   fig, axs = plt.subplots(3, number_image)
-  fig.suptitle("Afficher quelques images")
 
   for i in range(number_image):
-    axs[0,i].imshow(target_data[i], interpolation = "nearest")
-    axs[1,i].imshow(input_data[i], interpolation = "nearest")
-    axs[2,i].imshow(result_data[i].reshape(28, 28), interpolation = "nearest")
+    axs[0,i].imshow(target_data[indexs[i]], interpolation = "nearest", cmap='gray_r')
+    axs[1,i].imshow(input_data[indexs[i]], interpolation = "nearest", cmap='gray_r')
+    axs[2,i].imshow(result_data[indexs[i]], interpolation = "nearest", cmap='gray_r')
 
   axs.flat[0].set(ylabel = "Originales")
   axs.flat[number_image].set(ylabel = "Avec du bruit")
@@ -88,6 +126,26 @@ def DisplayResult(number_image, target_data, input_data, result_data):
     ax.set_xticklabels([])
     ax.label_outer()
 
+  plt.savefig(filename)
+  plt.show()
+
+def DisplayWithoutResult(number_image, target_data, input_data):
+  fig, axs = plt.subplots(2, number_image)
+
+  for i in range(number_image):
+    axs[0,i].imshow(target_data[indexs[i]], interpolation = "nearest", cmap='gray_r')
+    axs[1,i].imshow(input_data[indexs[i]], interpolation = "nearest", cmap='gray_r')
+
+  axs.flat[0].set(ylabel = "Originales")
+  axs.flat[number_image].set(ylabel = "Avec du bruit")
+
+  for ax in fig.get_axes():
+    ax.tick_params(axis=u'both', which=u'both',length=0)
+    ax.set_yticklabels([])
+    ax.set_xticklabels([])
+    ax.label_outer()
+
+  plt.savefig('without_result.png')
   plt.show()
 
 def SNR(x_ref,x):
@@ -98,9 +156,27 @@ def SNR(x_ref,x):
 
 if __name__ == "__main__":
   x_train, x_test, y_train, y_test = GetData()
+  indexs = rng.choice(x_test.shape[0], size=number_image, replace=False)
   x_train_ext, y_train_ext, x_test_ext, y_test_ext = PreProcess(x_train, x_test, y_train, y_test)
-  model = TrainModel(model_simple(), losses.mse, optimizers.Adam(), 10, 128, y_train_ext, x_train_ext, y_test_ext, x_test_ext)
-  # model = load_model('model.h5')
-  y_result_ext = model.predict(y_test_ext, verbose = 0)
-  DisplayResult(10, x_test, y_test, y_result_ext)
-  print("Signal to Noise Ratio:", SNR(x_test_ext, y_result_ext))
+  DisplayWithoutResult(number_image, x_test, y_test)
+
+  # Model Simple
+  #model = model_simple()
+  #model = TrainModel(model, losses.mse, optimizers.Adam(), epochs, batch_size, y_train_ext, x_train_ext, y_test_ext, x_test_ext)
+  #y_result = np.squeeze(model.predict(y_test_ext, verbose = 0)) 
+  #DisplayResult(number_image, x_test, y_test, y_result, "model_simple.png")
+  #print("Signal to Noise Ratio:", SNR(x_test, y_result))
+
+  # Model Lineare
+  #model = model_lineaire()
+  #model = TrainModel(model, losses.mse, optimizers.Adam(), epochs, batch_size, y_train_ext, x_train_ext, y_test_ext, x_test_ext, "model_lineaire")
+  #y_result = np.squeeze(model.predict(y_test_ext, verbose = 0)) 
+  #DisplayResult(number_image, x_test, y_test, y_result, "model_lineaire.png")
+  #print("Signal to Noise Ratio:", SNR(x_test, y_result))
+
+  # Model DnCNN
+  model = model_dncnn()
+  model = TrainModel(model, losses.mse, optimizers.Adam(), epochs, batch_size, y_train_ext, x_train_ext, y_test_ext, x_test_ext, "model_dncnn")
+  y_result = np.squeeze(model.predict(y_test_ext, verbose = 0)) 
+  DisplayResult(number_image, x_test, y_test, y_result, "model_dncnn.png")
+  print("Signal to Noise Ratio:", SNR(x_test, y_result))
